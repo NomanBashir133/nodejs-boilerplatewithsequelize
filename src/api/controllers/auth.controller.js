@@ -1,20 +1,31 @@
 const httpStatus = require('http-status');
-const User = require('../models/user.model');
-const RefreshToken = require('../models/refreshToken.model');
+const sequelize = require('../infra-database/models/index').sequelize;
+const Users = require('../infra-database/models/index').Users;
+const RefreshTokens = require('../infra-database/models/index').RefreshTokens;
 const moment = require('moment-timezone');
 const { jwtExpirationInterval } = require('../../config/vars');
+const stringUtils = require('../utils/stringUtil');
 
 /**
 * Returns a formated object with tokens
 * @private
 */
-function generateTokenResponse(user, accessToken) {
-  const tokenType = 'Bearer';
-  const refreshToken = RefreshToken.generate(user).token;
-  const expiresIn = moment().add(jwtExpirationInterval, 'minutes');
-  return {
-    tokenType, accessToken, refreshToken, expiresIn,
-  };
+async function generateTokenResponse(user, accessToken , transaction) {
+  try {
+    const tokenType = 'Bearer';
+    return RefreshTokens.generate(user , transaction)
+    .then((refreshToken) => {
+      const expiresIn = moment().add(jwtExpirationInterval, 'minutes');
+      return {
+        tokenType, accessToken, refreshToken, expiresIn,
+      };
+    }).catch((err) => {
+      throw err;
+    });
+   
+  } catch(err) {
+    throw err;
+  }
 }
 
 /**
@@ -22,14 +33,24 @@ function generateTokenResponse(user, accessToken) {
  * @public
  */
 exports.register = async (req, res, next) => {
+  let t = await sequelize.transaction();
+
   try {
-    const user = await (new User(req.body)).save();
-    const userTransformed = user.transform();
-    const token = generateTokenResponse(user, user.token());
+    
+    let firstNameLastNameObj = stringUtils.splitStringOnFirstSpace(req.body.fullName);
+    req.body.firstName = firstNameLastNameObj.firstName;
+    req.body.lastName = firstNameLastNameObj.lastName;
+    req.body.passwordHash = req.body.password;
+    const user = await (new Users(req.body)).save({transaction: t});
+    const userTransformed = user.transform(user);
+    const token = await generateTokenResponse(userTransformed, user.token() , {transaction: t});
     res.status(httpStatus.CREATED);
+    t.commit();
     return res.json({ token, user: userTransformed });
+  
   } catch (error) {
-    return next(User.checkDuplicateEmail(error));
+    t.rollback();
+    return next(Users.checkDuplicateEmail(error));
   }
 };
 
@@ -39,8 +60,8 @@ exports.register = async (req, res, next) => {
  */
 exports.login = async (req, res, next) => {
   try {
-    const { user, accessToken } = await User.findAndGenerateToken(req.body);
-    const token = generateTokenResponse(user, accessToken);
+    const { user, accessToken } = await Users.findAndGenerateToken(req.body);
+    const token = await generateTokenResponse(user, accessToken);
     const userTransformed = user.transform();
     return res.json({ token, user: userTransformed });
   } catch (error) {
@@ -76,7 +97,7 @@ exports.refresh = async (req, res, next) => {
       userEmail: email,
       token: refreshToken,
     });
-    const { user, accessToken } = await User.findAndGenerateToken({ email, refreshObject });
+    const { user, accessToken } = await Users.findAndGenerateToken({ email, refreshObject });
     const response = generateTokenResponse(user, accessToken);
     return res.json(response);
   } catch (error) {

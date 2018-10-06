@@ -19,6 +19,8 @@ const router = express.Router();
  * @apiGroup Auth
  * @apiPermission public
  *
+ * @apiParam  {String}          fullname  User's fullname
+ * @apiParam  {INTEGER}         roleId    User's role
  * @apiParam  {String}          email     User's email
  * @apiParam  {String{6..128}}  password  User's password
  *

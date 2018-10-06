@@ -4,6 +4,8 @@ module.exports = {
   // POST /v1/auth/register
   register: {
     body: {
+      fullName: Joi.string().required(),
+      roleId: Joi.any().valid([ 1, 2 ]).required(),
       email: Joi.string().email().required(),
       password: Joi.string().required().min(6).max(128),
     },

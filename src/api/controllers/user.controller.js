@@ -1,15 +1,15 @@
 const httpStatus = require('http-status');
 const { omit } = require('lodash');
-const User = require('../models/user.model');
+const Users = require('../infra-database/models/user');
 const { handler: errorHandler } = require('../middlewares/error');
-
+const stringUtils = require('../utils/stringUtil');
 /**
  * Load user and append to req.
  * @public
  */
 exports.load = async (req, res, next, id) => {
   try {
-    const user = await User.get(id);
+    const user = await Users.get(id);
     req.locals = { user };
     return next();
   } catch (error) {
@@ -35,12 +35,15 @@ exports.loggedIn = (req, res) => res.json(req.user.transform());
  */
 exports.create = async (req, res, next) => {
   try {
-    const user = new User(req.body);
+    let firstNameLastNameObj = stringUtils.splitStringOnFirstSpace(req.body.fullname);
+    req.body.firstName = firstNameLastNameObj.firstName;
+    req.body.fullname = firstNameLastNameObj.lastName;
+    const user = new Users(req.body);
     const savedUser = await user.save();
     res.status(httpStatus.CREATED);
     res.json(savedUser.transform());
   } catch (error) {
-    next(User.checkDuplicateEmail(error));
+    next(Users.checkDuplicateEmail(error));
   }
 };
 
@@ -51,16 +54,16 @@ exports.create = async (req, res, next) => {
 exports.replace = async (req, res, next) => {
   try {
     const { user } = req.locals;
-    const newUser = new User(req.body);
+    const newUser = new Users(req.body);
     const ommitRole = user.role !== 'admin' ? 'role' : '';
     const newUserObject = omit(newUser.toObject(), '_id', ommitRole);
 
     await user.update(newUserObject, { override: true, upsert: true });
-    const savedUser = await User.findById(user._id);
+    const savedUser = await Users.findById(user._id);
 
     res.json(savedUser.transform());
   } catch (error) {
-    next(User.checkDuplicateEmail(error));
+    next(Users.checkDuplicateEmail(error));
   }
 };
 
@@ -75,7 +78,7 @@ exports.update = (req, res, next) => {
 
   user.save()
     .then(savedUser => res.json(savedUser.transform()))
-    .catch(e => next(User.checkDuplicateEmail(e)));
+    .catch(e => next(Users.checkDuplicateEmail(e)));
 };
 
 /**
@@ -84,7 +87,7 @@ exports.update = (req, res, next) => {
  */
 exports.list = async (req, res, next) => {
   try {
-    const users = await User.list(req.query);
+    const users = await Users.list(req.query);
     const transformedUsers = users.map(user => user.transform());
     res.json(transformedUsers);
   } catch (error) {
